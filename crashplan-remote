@@ -16,20 +16,23 @@ readonly LOCAL_INFO="/tmp/crashplan-remote.$$.ui_info.local"
 
 RHOST=$1
 
+die() {
+  local message=$1
+  echo "$message" 1>&2
+  exit 1
+}
+
 check_usage() {
   if [[ -z "$RHOST" ]]; then   
-    echo "Usage: $0 remotehost"
-    exit 1
+    die "Usage: $0 remotehost"
   fi
 
-  if ps ax | grep --quiet 'CrashPlan.app/Contents/MacOS/CrashPla[n] '; then
-    echo "It appears that CrashPlan is already running."
-    exit 1
-  fi
+  ps ax | grep --quiet 'CrashPlan.app/Contents/MacOS/CrashPla[n] ' && 
+    die "It appears that CrashPlan is already running."
 }
 
 switch_files() {
-  cp "$UI_INFO" "$LOCAL_INFO"
+  cp "$UI_INFO" "$LOCAL_INFO" || die "Couldn't back up ${UI_INFO}"
 
   # obtain ui_info from remote host
   for location in "$UI_INFO" "/var/lib/crashplan/.ui_info"; do
@@ -39,8 +42,7 @@ switch_files() {
   done
 
   if ! [[ -e "$REMOTE_INFO" ]]; then
-    echo "Couldn't get remote ui_info file"
-    exit 1
+    die "Couldn't get remote ui_info file"
   fi
 
   mv "$REMOTE_INFO" "$UI_INFO"
