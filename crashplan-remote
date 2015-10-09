@@ -1,0 +1,81 @@
+#!/bin/bash 
+
+if [[ -n "$DEBUG" ]]; then
+  set -x
+  crashplan_output="cat"
+  ssh_quiet=""
+else
+  crashplan_output="logger"
+  ssh_quiet="-q"
+fi
+  
+readonly UI_INFO="/Library/Application Support/CrashPlan/.ui_info"
+readonly CRASHPLAN_APP="/Applications/CrashPlan.app/Contents/MacOS/CrashPlan"
+readonly REMOTE_INFO="/tmp/crashplan-remote.$$.ui_info.remote"
+readonly LOCAL_INFO="/tmp/crashplan-remote.$$.ui_info.local"
+
+RHOST=$1
+
+check_usage() {
+  if [[ -z "$RHOST" ]]; then   
+    echo "Usage: $0 remotehost"
+    exit 1
+  fi
+
+  if ps ax | grep --quiet 'CrashPlan.app/Contents/MacOS/CrashPla[n] '; then
+    echo "It appears that CrashPlan is already running."
+    exit 1
+  fi
+}
+
+switch_files() {
+  cp "$UI_INFO" "$LOCAL_INFO"
+
+  # obtain ui_info from remote host
+  for location in "$UI_INFO" "/var/lib/crashplan/.ui_info"; do
+    if ssh $RHOST test -e "'$location'"; then
+      scp $ssh_quiet "$RHOST:'$location'" "$REMOTE_INFO"
+    fi
+  done
+
+  if ! [[ -e "$REMOTE_INFO" ]]; then
+    echo "Couldn't get remote ui_info file"
+    exit 1
+  fi
+
+  mv "$REMOTE_INFO" "$UI_INFO"
+
+  sed -i '' 's/^4243/4202/' "$UI_INFO"
+}
+
+build_tunnel() {
+  /usr/bin/ssh -L4202:localhost:4243 -N -n -T -x $RHOST &
+  ssh_pid=$!
+}
+
+cleanup() {
+  # replace default .ui_info
+  if [[ -e "$LOCAL_INFO" ]]; then
+    mv "$LOCAL_INFO" "$UI_INFO"
+  fi
+
+  # close the ssh tunnel
+  if [[ -n "$ssh_pid" ]]; then
+    kill $ssh_pid  
+  fi
+}
+
+
+trap cleanup EXIT
+
+check_usage
+switch_files
+build_tunnel
+
+# - here we call the executable directly so it runs in foreground -- starting
+#   the .app bundle with open(1) will return immediately.
+# - if the ssh tunnel failed, then so will $CRASHPLAN_APP, and the cleanup 
+#   function will put everything back. this is, in my opinion,
+#   more elegant than sleeping to see if the tunnel came up, since
+#   CrashPlan, being Java, takes its good time starting up anyway.
+"$CRASHPLAN_APP" 2>&1 | "$crashplan_output"
