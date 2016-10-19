@@ -13,6 +13,7 @@ readonly UI_INFO="/Library/Application Support/CrashPlan/.ui_info"
 readonly CRASHPLAN_APP="/Applications/CrashPlan.app/Contents/MacOS/CrashPlan"
 readonly REMOTE_INFO="/tmp/crashplan-remote.$$.ui_info.remote"
 readonly LOCAL_INFO="/tmp/crashplan-remote.$$.ui_info.local"
+readonly SSHOPTS="-o ControlMaster=no -o ControlPersist=no $ssh_quiet"
 
 RHOST=$1
 
@@ -36,8 +37,8 @@ switch_files() {
 
   # obtain ui_info from remote host
   for location in "$UI_INFO" "/var/lib/crashplan/.ui_info"; do
-    if ssh $RHOST test -e "'$location'"; then
-      scp $ssh_quiet "$RHOST:'$location'" "$REMOTE_INFO"
+    if ssh $SSHOPTS $RHOST test -e "'$location'"; then
+      scp $SSHOPTS "$RHOST:'$location'" "$REMOTE_INFO"
     fi
   done
 
@@ -51,7 +52,7 @@ switch_files() {
 }
 
 build_tunnel() {
-  /usr/bin/ssh -L4202:localhost:4243 -N -n -T -x $RHOST &
+  /usr/bin/ssh $SSHOPTS -L4202:localhost:4243 -N -n -T -x $RHOST &
   ssh_pid=$!
 }
 
